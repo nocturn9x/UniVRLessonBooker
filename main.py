@@ -47,7 +47,7 @@ async def send_request(
         it all extra positional and keyword arguments
     :type method: str
     :return: A response object if the request succeeds or an exception if it
-        the it fails entirely
+        it fails entirely
     :raises ValueError: If the given method does not exist or is invalid
     :raises TypeError: If method is not a string (checked via isinstance())
     """
@@ -76,6 +76,7 @@ def check_response(
     :type value: Union[httpx.Response, httpx.RequestError]
     :param verbose: The value of arguments.verbose inside main(), defaults to False
     :type verbose: bool, optional
+    :return: True if the application should exit (error occurred), false otherwise
     """
 
     if isinstance(value, httpx.RequestError):
