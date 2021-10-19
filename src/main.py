@@ -160,7 +160,6 @@ async def login_with_gia(
                 await page.type('#IDToken2', password, delay=100)
                 logger.debug("Submitting login form")
                 await page.click('[type="button"]')
-                await asyncio.sleep(2)  # We sleep a couple of seconds to make sure authentication worked
                 if "failed" in (await page.title()).lower():
                     logger.error("SSO authentication failed: invalid credentials")
                     return ""
