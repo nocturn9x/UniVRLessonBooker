@@ -10,7 +10,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import sys
 import json
 import httpx
@@ -196,12 +195,11 @@ async def main(arguments: argparse.Namespace) -> int:
     stream_handler.setFormatter(formatter)
     logger.addHandler(stream_handler)
     if arguments.log_file:
-        if os.path.isfile(arguments.log_file):
-            file_handler = logging.FileHandler(arguments.log_file)
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
-        else:
-            logger.error(f"File {arguments.log_file!r} does not exist! Skipping logging to file")
+        file_handler = logging.FileHandler(arguments.log_file)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    else:
+        logger.debug(f"Skipping logging to file as no -l/--log-file option was provided")
     logger.info("UniVRAutoLessonBooker v0.1 starting up!")
     if not arguments.tax_code:
         logger.info("You have not provided your tax/fiscal code, but I can get it for you. Please provide your GIA SSO"
