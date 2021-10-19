@@ -10,6 +10,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import sys
 import json
 import httpx
@@ -180,8 +181,7 @@ async def login_with_gia(
 
 
 async def main(arguments: argparse.Namespace) -> int:
-    """eer.errors.PyppeteerError as browser_error:
-                if verb
+    """
     Main program entry point
 
     :param arguments: The namespace containing argparse arguments
@@ -191,9 +191,17 @@ async def main(arguments: argparse.Namespace) -> int:
 
     logger = logging.Logger("UniVRLessonBooker")
     logger.setLevel(logging.DEBUG if arguments.verbose else logging.INFO)
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter(datefmt="%H:%M:%S %p", fmt="[%(levelname)s - %(asctime)s] %(message)s"))
-    logger.addHandler(handler)
+    formatter = logging.Formatter(datefmt="%H:%M:%S %p", fmt="[%(levelname)s - %(asctime)s] %(message)s")
+    stream_handler = logging.StreamHandler(sys.stderr)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+    if arguments.log_file:
+        if os.path.isfile(arguments.log_file):
+            file_handler = logging.FileHandler(arguments.log_file)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        else:
+            logger.error(f"File {arguments.log_file!r} does not exist! Skipping logging to file")
     logger.info("UniVRAutoLessonBooker v0.1 starting up!")
     if not arguments.tax_code:
         logger.info("You have not provided your tax/fiscal code, but I can get it for you. Please provide your GIA SSO"
@@ -321,6 +329,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "-v", "--verbose", help="Increase log message verbosity. For advanced users only!", action="store_true"
     )
+    parser.add_argument("-l", "--log-file", help="Tells the script to also write logs on the specified file (relative"
+                                                 "or absolute paths are both accepted). Defaults to no file (i.e. no"
+                                                 "file logging)", default=None)
     loop = asyncio.get_event_loop()
     try:
         main_task = asyncio.ensure_future(main(parser.parse_args()))
