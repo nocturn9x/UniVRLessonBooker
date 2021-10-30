@@ -22,7 +22,7 @@ from getpass import getpass
 from pyppeteer import launch
 from base64 import b64decode
 from signal import SIGINT, SIGTERM
-from pyppeteer.errors import PyppeteerError
+from pyppeteer.errors import PyppeteerError, NetworkError
 
 
 GET_ALL_LESSONS_URL = "https://logistica.univr.it/easylesson/api/leggi_insegnamenti/{}"
@@ -160,9 +160,12 @@ async def login_with_gia(
                 await page.type('#IDToken2', password, delay=100)
                 logger.debug("Submitting login form")
                 await page.click('[type="button"]')
-                if "failed" in (await page.title()).lower():
-                    logger.error("SSO authentication failed: invalid credentials")
-                    return ""
+                try:
+                    if "failed" in (await page.title()).lower():
+                        logger.error("SSO authentication failed: invalid credentials")
+                        return ""
+                except NetworkError:
+                    pass   # TODO: This now fails when login is successful for some reason(?)
                 return page.url.split("#")[1].strip("access_token=")
             except PyppeteerError as browser_error:
                 if verbose:
