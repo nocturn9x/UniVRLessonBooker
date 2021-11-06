@@ -82,7 +82,7 @@ def check_response(
     if isinstance(value, httpx.RequestError):
         if verbose:
             logger.error(
-                f"A fatal HTTP exception occurred while sending request to {value.request.url!r}, details follow:"
+                f"A fatal HTTP exception occurred while sending request to {value.request.url!r}, details follow: "
                 f"{type(value).__name__} -> {value}"
             )
         else:
@@ -259,7 +259,7 @@ async def main(arguments: argparse.Namespace) -> int:
                     result := await send_request(client, "get", GET_BOOKABLE_LESSONS_URL.format(arguments.tax_code)),
                     arguments.verbose,
                 ):
-                    return -1
+                    continue   # Tries again
                 else:
                     entries = []
                     for chunk in json.loads(result.text):
