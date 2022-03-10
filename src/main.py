@@ -207,8 +207,14 @@ async def main(arguments: argparse.Namespace) -> int:
     if not arguments.tax_code:
         logger.info("You have not provided your tax/fiscal code, but I can get it for you. Please provide your GIA SSO"
                     " credentials below")
-        username = input("Type your GIA SSO username: ")
-        password = getpass("Type your GIA SSO password (hidden): ")
+        try:
+            username = input("Type your GIA SSO username: ")
+            password = getpass("Type your GIA SSO password (hidden): ")
+        except KeyboardInterrupt:
+            # Asyncio's signal handlers won't work
+            # when blocked in synchronous code like
+            # this
+            return
         logger.info(f"Logging in as {username!r}")
         if access_token := await login_with_gia(logger, username, password, arguments.verbose):
             logger.debug(f"Access token is {access_token!r}")
@@ -222,7 +228,7 @@ async def main(arguments: argparse.Namespace) -> int:
             return -1
     logger.info(f"Authenticating as '{arguments.tax_code}'")
     async with httpx.AsyncClient(
-        # We mimic the app's headers
+        # We mimic the app's headers. Specifically, this is my Xiaomi Mi 11i, lol
         headers={
             "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 11; M2012K11G Build/RKQ1.201112.002)",
             # I seriously have no idea what the app designers were thinking, but
@@ -249,65 +255,68 @@ async def main(arguments: argparse.Namespace) -> int:
         ):
             return 1
         logger.debug(f"Request to {result.url} sent, status code is {result.status_code}")
-        if json.loads(result.text) != {}:
-            # The API returns an empty JSON object to unauthenticated
-            # requests
-            logger.info(f"Tax code is valid! You can now leave this program running in the background")
-            while True:
-                if check_response(
-                    logger,
-                    result := await send_request(client, "get", GET_BOOKABLE_LESSONS_URL.format(arguments.tax_code)),
-                    arguments.verbose,
-                ):
-                    continue   # Tries again
-                else:
-                    entries = []
-                    for chunk in json.loads(result.text):
-                        # Lessons are divided according to chunks of the
-                        # day, usually from 7:00 to 14:00 and from 14:00 to 22:00
-                        for lesson in chunk["prenotazioni"]:
-                            if lesson["prenotabile"] and not lesson["prenotata"]:
-                                if lesson["presenti"] < lesson["capacita"]:
-                                    logger.info(
-                                        f"Booking lesson {lesson['nome']!r} ({lesson['entry_id']}) scheduled at "
-                                        f"{chunk['data']} from {lesson['ora_inizio']} to"
-                                        f" {lesson['ora_fine']} in {chunk['sede']!r} in classroom {lesson['aula']!r} "
-                                        f"({lesson['capacita'] - lesson['presenti']}/{lesson['capacita']}"
-                                        f" seats remaining)"
-                                    )
-                                    entries.append(lesson["entry_id"])
-                                else:
-                                    logger.warning(
-                                        f"Lesson {lesson['nome']!r} ({lesson['entry_id']}) scheduled at"
-                                        f"{chunk['data']} from {lesson['ora_inizio']} to"
-                                        f" {lesson['ora_fine']} in {chunk['sede']} in classroom"
-                                        f" {lesson['aula']!r} has 0 remaining seats out of {lesson['capacita']}!"
-                                    )
-                    for entry in entries:
-                        # We _could_ send all entries at once, since the entry parameter is an
-                        # array, but this gives us finer error handling and makes it so that if
-                        # one lesson is not bookable it doesn't affect the others. Maybe the API
-                        # already does this, but I'm too lazy to find out
-                        logger.debug(f"Sending request to {BOOK_LESSON_URL} for entry {entry}")
-                        if check_response(
-                            logger,
-                            result := await send_request(
-                                client,
-                                "post",
-                                BOOK_LESSON_URL,
-                                data=json.dumps({"CodiceFiscale": arguments.tax_code, "entry": [entry]}),
-                            ),
-                            arguments.verbose,
-                        ):
-                            entries.remove(entry)
-                        logger.debug(f"Request to {result.url} sent, status code is {result.status_code}, payload is {result.content}")
-                logger.info(
-                    f"Booked {len(entries)} lesson{'' if len(entries) == 1 else 's'}, sleeping for {arguments.delay} seconds"
-                )
-                await asyncio.sleep(arguments.delay)
-        else:
-            logger.error(f"The provided tax code does not appear to be valid, please check for any typos and try again")
-            return -1
+        try:
+            if json.loads(result.text) != {}:
+                # The API returns an empty JSON object to unauthenticated
+                # requests
+                logger.info(f"Tax code is valid! You can now leave this program running in the background")
+                while True:
+                    if check_response(
+                        logger,
+                        result := await send_request(client, "get", GET_BOOKABLE_LESSONS_URL.format(arguments.tax_code)),
+                        arguments.verbose,
+                    ):
+                        continue   # Tries again
+                    else:
+                        entries = []
+                        for chunk in json.loads(result.text):
+                            # Lessons are divided according to chunks of the
+                            # day, usually from 7:00 to 14:00 and from 14:00 to 22:00
+                            for lesson in chunk["prenotazioni"]:
+                                if lesson["prenotabile"] and not lesson["prenotata"]:
+                                    if lesson["presenti"] < lesson["capacita"]:
+                                        logger.info(
+                                            f"Booking lesson {lesson['nome']!r} ({lesson['entry_id']}) scheduled at "
+                                            f"{chunk['data']} from {lesson['ora_inizio']} to"
+                                            f" {lesson['ora_fine']} in {chunk['sede']!r} in classroom {lesson['aula']!r} "
+                                            f"({lesson['capacita'] - lesson['presenti']}/{lesson['capacita']}"
+                                            f" seats remaining)"
+                                        )
+                                        entries.append(lesson["entry_id"])
+                                    else:
+                                        logger.warning(
+                                            f"Lesson {lesson['nome']!r} ({lesson['entry_id']}) scheduled at"
+                                            f"{chunk['data']} from {lesson['ora_inizio']} to"
+                                            f" {lesson['ora_fine']} in {chunk['sede']} in classroom"
+                                            f" {lesson['aula']!r} has 0 remaining seats out of {lesson['capacita']}!"
+                                        )
+                        for entry in entries:
+                            # We _could_ send all entries at once, since the entry parameter is an
+                            # array, but this gives us finer error handling and makes it so that if
+                            # one lesson is not bookable it doesn't affect the others. Maybe the API
+                            # already does this, but I'm too lazy to find out
+                            logger.debug(f"Sending request to {BOOK_LESSON_URL} for entry {entry}")
+                            if check_response(
+                                logger,
+                                result := await send_request(
+                                    client,
+                                    "post",
+                                    BOOK_LESSON_URL,
+                                    data=json.dumps({"CodiceFiscale": arguments.tax_code, "entry": [entry]}),
+                                ),
+                                arguments.verbose,
+                            ):
+                                entries.remove(entry)
+                            logger.debug(f"Request to {result.url} sent, status code is {result.status_code}, payload is {result.content}")
+                    logger.info(
+                        f"Booked {len(entries)} lesson{'' if len(entries) == 1 else 's'}, sleeping for {arguments.delay} seconds"
+                    )
+                    await asyncio.sleep(arguments.delay)
+            else:
+                logger.error(f"The provided tax code does not appear to be valid, please check for any typos and try again")
+                return -1
+        except json.decoder.JSONDecodeError as json_error:
+            logger.error(f"A fatal JSON decoding error occurred -> {type(json_error).__name__}: {json_error}")
 
 
 if __name__ == "__main__":
@@ -331,8 +340,8 @@ if __name__ == "__main__":
         "-v", "--verbose", help="Increase log message verbosity. For advanced users only!", action="store_true"
     )
     parser.add_argument("-l", "--log-file", help="Tells the script to also write logs on the specified file (relative"
-                                                 "or absolute paths are both accepted). Defaults to no file (i.e. no"
-                                                 "file logging)", default=None)
+                                                 " or absolute paths are both accepted). Defaults to no file (i.e. no"
+                                                 " file logging)", default=None)
     loop = asyncio.get_event_loop()
     try:
         main_task = asyncio.ensure_future(main(parser.parse_args()))
