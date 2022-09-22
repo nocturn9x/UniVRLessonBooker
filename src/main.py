@@ -151,7 +151,7 @@ async def login_with_gia(
             )
             try:
                 logger.debug("Launching headless browser instance")
-                browser = await launch(headless=False, executablePath="/usr/bin/google-chrome-beta")
+                browser = await launch(headless=True, executablePath="/usr/bin/google-chrome-beta")
                 logger.debug("Headless browser instance launched, opening new page")
                 page = await browser.newPage()
                 logger.debug(f"New page opened, going to redirect URL: {result.url}")
