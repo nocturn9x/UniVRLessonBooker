@@ -13,8 +13,10 @@
 import sys
 import json
 import httpx
+import sniffio
 import logging
 import asyncio
+import warnings
 import argparse
 from typing import Union
 from hashlib import sha256
@@ -149,17 +151,17 @@ async def login_with_gia(
             )
             try:
                 logger.debug("Launching headless browser instance")
-                browser = await launch(headless=True)
+                browser = await launch(headless=False, executablePath="/usr/bin/google-chrome-beta")
                 logger.debug("Headless browser instance launched, opening new page")
                 page = await browser.newPage()
                 logger.debug(f"New page opened, going to redirect URL: {result.url}")
                 await page.goto(str(result.url))
                 logger.debug("Page loaded, typing credentials")
                 # Types username and password with 100ms delay between key presses
-                await page.type('#IDToken1', username, delay=100)
-                await page.type('#IDToken2', password, delay=100)
+                await page.type('#form_username.form-control', username, delay=100)
+                await page.type('#form_password.form-control', password, delay=100)
                 logger.debug("Submitting login form")
-                await page.click('[type="button"]')
+                await page.click('[type="submit"]')
                 try:
                     if "failed" in (await page.title()).lower():
                         logger.error("SSO authentication failed: invalid credentials")
@@ -179,7 +181,8 @@ async def login_with_gia(
                     )
                 return ""
             finally:
-                await browser.close()
+                if locals().get("browser"):
+                    await browser.close()
 
 
 async def main(arguments: argparse.Namespace) -> int:
@@ -342,13 +345,22 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--log-file", help="Tells the script to also write logs on the specified file (relative"
                                                  " or absolute paths are both accepted). Defaults to no file (i.e. no"
                                                  " file logging)", default=None)
-    loop = asyncio.get_event_loop()
-    try:
-        main_task = asyncio.ensure_future(main(parser.parse_args()))
-        for sig in [SIGINT, SIGTERM]:
-            loop.add_signal_handler(sig, main_task.cancel)
-        sys.exit(loop.run_until_complete(main_task))
-    except asyncio.exceptions.CancelledError:
-        print()
-    finally:
-        loop.close()
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
+    logging.getLogger("websockets").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', DeprecationWarning)
+        loop = asyncio.get_event_loop()
+        try:
+            main_task = asyncio.ensure_future(main(parser.parse_args()))
+            for sig in [SIGINT, SIGTERM]:
+                loop.add_signal_handler(sig, main_task.cancel)
+            sys.exit(loop.run_until_complete(main_task))
+        except (asyncio.exceptions.CancelledError, RuntimeError, sniffio._impl.AsyncLibraryNotFoundError):
+            print()
+        finally:
+            try:
+                if not loop.is_closed():
+                    loop.close()
+            except RuntimeError:
+                pass
