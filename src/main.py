@@ -217,7 +217,7 @@ async def main(arguments: argparse.Namespace) -> int:
             # Asyncio's signal handlers won't work
             # when blocked in synchronous code like
             # this
-            return
+            return 0
         logger.info(f"Logging in as {username!r}")
         if access_token := await login_with_gia(logger, username, password, arguments.verbose):
             logger.debug(f"Access token is {access_token!r}")
